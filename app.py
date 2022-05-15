@@ -1,4 +1,6 @@
 # app.py
+import json
+
 import sqlalchemy.exc
 from flask import Flask, request
 from flask_restx import Api, Resource
@@ -7,6 +9,7 @@ from marshmallow import Schema, fields
 
 app = Flask(__name__)
 api = Api(app)
+api.app.config['RESTX_JSON'] = {'ensure_ascii': False, 'indent': 4}
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///test.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
@@ -86,7 +89,7 @@ genre_schema_2 = GenreSchema2()
 
 
 # Movie views
-@movie_ns.route("/")  # Обрабатывает запросы "/movies/" и "/movies/?page=<int>"
+@movie_ns.route("/")
 class MoviesView(Resource):
     def get(self):
         page = request.args.get("page", type=int)
@@ -114,20 +117,17 @@ class MoviesView(Resource):
                                    Movie.director_id == director)
         movies = movies.limit(per_page).offset((page - 1) * per_page)
 
-        return movie_schema.dump(movies, many=True)
+        return movie_schema.dump(movies, many=True), 200
 
     def post(self):
-        try:
-            new_movie = request.json
-            m = Genre(**new_movie)
-            db.session.add(m)
-            db.session.commit()
-            return "New movie successful added"
-        except Exception as e:
-            return f"Something went wrong. Error code: {e}"
+        new_movie = request.get_json()
+        m = Movie(**new_movie)
+        db.session.add(m)
+        db.session.commit()
+        return "New movie successful added", 201
 
 
-@movie_ns.route("/<int:mid>/")  # Обрабатывает запрос "/movies/<int:id>/"
+@movie_ns.route("/<int:mid>/")
 class MovieView(Resource):
     def get(self, mid):
         movie = db.session.query(Movie.id,
@@ -143,74 +143,63 @@ class MovieView(Resource):
         return movie_schema.dump(movie), 200
 
     def put(self, mid):
-        try:
-            updated_movie = request.json
-            movie = Genre.query.get(mid)
-            movie.name = updated_movie["name"]
-            db.session.add(movie)
-            db.session.commit()
-            return "Movie successful updated"
-        except Exception as e:
-            return f"Something went wrong. Error code: {e}"
+        updated_movie = request.json
+        movie = Movie.query.get(mid)
+        movie.title = updated_movie["title"]
+        movie.description = updated_movie["description"]
+        movie.trailer = updated_movie["trailer"]
+        movie.year = updated_movie["year"]
+        movie.rating = updated_movie["rating"]
+        movie.genre_id = updated_movie["genre_id"]
+        movie.director_id = updated_movie["director_id"]
+
+        db.session.add(movie)
+        db.session.commit()
+        return "Movie successful updated", 201
+
 
     def delete(self, mid):
-        try:
-            movie = Movie.query.get(mid)
-            db.session.delete(movie)
-            db.session.commit()
-            return "movie successful deleted"
-        except Exception as e:
-            return f"Something went wrong. Error code: {e}"
+        movie = Movie.query.get(mid)
+        db.session.delete(movie)
+        db.session.commit()
+        return "movie successful deleted", 204
+
 
 
 # Genre views
 @genre_ns.route("/")
 class GenresView(Resource):
     def get(self):
-        genres = db.session.query(Genre).join(Movie.genre).all()
+        genres = db.session.query(Genre).all()
         return genre_schema.dump(genres, many=True), 200
 
     def post(self):
-        try:
             new_genre = request.json
             g = Genre(**new_genre)
             db.session.add(g)
             db.session.commit()
-            return "New genre successful added"
-        except Exception as e:
-            return f"Something went wrong. Error code: {e}"
+            return "New genre successful added", 201
 
 
 @genre_ns.route("/<int:gid>")
 class GenreView(Resource):
     def get(self, gid):
-        try:
-            genre = db.session.query(Genre.name,
-                                     Movie.title).join(Movie.genre
-                                    ).filter(Genre.id == gid)
-            return genre_schema_2.dump(genre, many=True), 200
-        except sqlalchemy.exc.NoResultFound:
-            return "No row was found when one was required"
+        genre = Genre.query.get(gid)
+        return genre_schema.dump(genre), 200
 
     def put(self, gid):
-        try:
-            updated_genre = request.json
-            genre = Genre.query.get(gid)
-            genre.name = updated_genre["name"]
-            db.session.add(genre)
-            db.session.commit()
-            return "Genre successful updated"
-        except Exception as e:
-            return f"Something went wrong. Error code: {e}"
+        updated_genre = request.json
+        genre = Genre.query.get(gid)
+        genre.name = updated_genre["name"]
+        db.session.add(genre)
+        db.session.commit()
+        return "Genre successful updated", 201
 
     def delete(self, gid):
-        try:
-            genre = Genre.query.get(gid)
-            db.session.delete(genre)
-            db.session.commit()
-            return "Genre successful deleted"
-        except Exception as e:
-            return f"Something went wrong. Error code: {e}"
+        genre = Genre.query.get(gid)
+        db.session.delete(genre)
+        db.session.commit()
+        return "Genre successful deleted", 204
 
 
 # Director views
@@ -218,47 +207,37 @@ class GenreView(Resource):
 class DirectorsView(Resource):
     def get(self):
         directors = db.session.query(Director).all()
-        return genre_schema.dump(directors, many=True), 200
+        return director_schema.dump(directors, many=True), 200
 
     def post(self):
-        try:
-            new_director = request.json
-            d = Director(**new_director)
-            db.session.add(d)
-            db.session.commit()
-            return "New director successful added"
-        except Exception as e:
-            return f"Something went wrong. Error code: {e}"
+        new_director = request.json
+        d = Director(**new_director)
+        db.session.add(d)
+        db.session.commit()
+        return "New director successful added", 201
 
 
 @director_ns.route("/<int:did>")
 class DirectorView(Resource):
     def get(self, did):
-        try:
-            director = Director.query.get(did)
-            return genre_schema.dump(director), 200
-        except sqlalchemy.exc.NoResultFound:
-            return "No row was found when one was required"
+        director = Director.query.get(did)
+        return director_schema.dump(director), 200
+
 
     def put(self, did):
-        try:
-            updated_director = request.json
-            director = Director.query.get(did)
-            director.name = updated_director["name"]
-            db.session.add(director)
-            db.session.commit()
-            return "Director successful updated"
-        except Exception as e:
-            return f"Something went wrong. Error code: {e}"
+        updated_director = request.json
+        director = Director.query.get(did)
+        director.name = updated_director["name"]
+        db.session.add(director)
+        db.session.commit()
+        return "Director successful updated", 201
+
 
     def delete(self, did):
-        try:
             director = Director.query.get(did)
             db.session.delete(director)
             db.session.commit()
-            return "director successful deleted"
-        except Exception as e:
-            return f"Something went wrong. Error code: {e}"
+            return "director successful deleted", 204
 
 
 if __name__ == '__main__':
